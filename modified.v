@@ -1,4 +1,4 @@
-module Device(
+module Device (
 	input clk ,
     input reset,
 	input grant , 
@@ -10,16 +10,15 @@ module Device(
 	output reg tready,
 	output reg deviceSelect,
 	output reg request, 
-    input[31:0]  forceadd
-    );
-    
-parameter ad1 = 32'h00000000;
-parameter ad2 = 32'h00000001;
-parameter ad3 = 32'h00000002;
-reg [15:0] phases;
-reg [15:0] next_phases;
-parameter defaultt=16'h0010;
-parameter master=16'h0020;
+    input[31:0]  forceadd,
+    input device_id
+);
+
+// master phases
+reg [15:0] master_phase;
+reg [15:0] master_next_phase;
+parameter  defaultt=16'h0010;
+parameter  master=16'h0020;
 parameter  requestadd= 16'h0000;
 parameter  turn_around= 16'h0001;
 parameter  data_phase1= 16'h0002;
@@ -33,14 +32,28 @@ parameter  data_phase8= 16'h0009;
 parameter  data_phase9= 16'h000a;
 parameter  data_phase10 = 16'h000b;
 parameter  beforefinsih = 16'h001b;
-parameter finish =16'h0011;
+parameter  finish =16'h0011;
 parameter write_phase=16'h1000;
 
-//* registers for master (initiator) & target(slave)
-reg masterflag , targetflag;
-//* define the memory 
-reg [31:0] mem [0:9] ;
-reg [31:0] memTarget[0:9];
+//target phases
+reg [15:0] target_phase;
+reg [15:0] target_next_phase;
+parameter  default_target=16'h0010;
+parameter  readadd= 16'h0000;
+parameter  turn_around= 16'h0001;
+parameter  target_data_phase1= 16'h0002;
+parameter  target_data_phase2= 16'h0003;
+parameter  target_data_phase3= 16'h0004;
+parameter  target_data_phase4= 16'h0005;
+parameter  target_data_phase5= 16'h0006;
+parameter  target_data_phase6= 16'h0007;
+parameter  target_data_phase7= 16'h0002;
+parameter  target_data_phase8= 16'h0008;
+parameter  target_data_phase9= 16'h0009;
+parameter  target_data_phase10= 16'h000a;
+parameter  beforefinsih = 16'h001b;
+parameter  finish =16'h0011;
+parameter write_phase=16'h1000;
 
 //* assign address data upon control signal
 reg[31:0] addressreg;
@@ -50,13 +63,31 @@ reg controlreg;
 //* control reg =0 --> addressdata bus = address reg
 assign addressdata=(controlreg)?  datareg:addressreg;
 
+// 3 addresses for 3 devices
+parameter deviceA = 32'h00000000;  
+parameter deviceB = 32'h00000001;   
+parameter deviceC = 32'h00000002;   
+
+//* registers for master (initiator) & target(slave)
+reg targetflag;
+reg masterflag;
+
+//* define the memory 
+reg [31:0] mem [0:9] ;
+reg [31:0] memTarget[0:9];
+
+
+
 //*  switching from one phase two another on rising clock edges
 always @(posedge clk)
 begin
-      phases<=next_phases;
+      master_phase <= master_next_phase;
+      target_phase <= target_next_phase;
+
 end
+
 always @(posedge clk or reset)
-      begin
+begin
     //* reset state to intialize the bus 
     if (reset)
             begin 
@@ -64,7 +95,8 @@ always @(posedge clk or reset)
                 iready<=1;
                 tready<=1;
                 deviceSelect<=1;
-                phases<=defaultt;
+                master_phase<=defaultt;
+                target_phase<=default_target;
                 masterflag<=0;
                 targetflag<=0;
                 datareg<=32'hz;
@@ -72,23 +104,24 @@ always @(posedge clk or reset)
             end 
     else
     begin 
-      case(phases)
+    case(master_phase)
 
       //*default where we check the frame and grant  to know the master device
       defaultt: 
       begin
             if(!grant && iframe)// * iframe will always be 1 and this conditon will enter if grant is 0
             begin
-						 controlreg<=1'bz;
-                         masterflag<=1;
+				controlreg<=1'bz;
+                        masterflag<=1;
+                        targetflag<=0;
                   @(negedge clk)
                   begin
                         iframe<=0;
-                        next_phases<=requestadd;
+                        master_next_phase<=requestadd;
                   end
             end  
             else
-                  next_phases<=defaultt; 
+                  master_next_phase<=defaultt; 
       end
       
       //*this phase is responsible for putting the address of the slave on the data bus and
@@ -100,9 +133,9 @@ always @(posedge clk or reset)
 						controlreg<=0;
                         addressreg<=forceadd; //address asserted
                   if(cbe) //read operation 
-                        next_phases<=turn_around;
+                        master_next_phase<=turn_around;
                   else
-                        next_phases<=write_phase;
+                        master_next_phase<=write_phase;
             end
       end
 
@@ -114,7 +147,7 @@ always @(posedge clk or reset)
             begin
                   iready<=0;
                   datareg<=32'hz;
-                  next_phases<=data_phase1;
+                  master_next_phase<=data_phase1;
             end
 
       end
@@ -131,15 +164,15 @@ always @(posedge clk or reset)
                               if(no_data==0+1)  
                                     begin
                                     iframe<=1;
-                                    next_phases<=beforefinsih;
+                                    master_next_phase<=beforefinsih;
                                     end
                               else
-                              next_phases<=data_phase2;
+                              master_next_phase<=data_phase2;
                         end
 
                         else
                               begin
-                                 next_phases<=data_phase1;
+                                 master_next_phase<=data_phase1;
                               end
             end
       end
@@ -158,14 +191,14 @@ always @(posedge clk or reset)
                               if(no_data==1+1)
                                     begin
                                     iframe<=1;
-                                    next_phases<=beforefinsih;
+                                    master_next_phase<=beforefinsih;
                                     end
                               else
-                              next_phases<=data_phase3;
+                              master_next_phase<=data_phase3;
                         end
                          else
                               begin
-                                 next_phases<=data_phase2;
+                                 master_next_phase<=data_phase2;
                               end
                 end 
             end
@@ -184,14 +217,14 @@ always @(posedge clk or reset)
                               if(no_data==2+1)
                                     begin
                                     iframe<=1;
-                                    next_phases<=beforefinsih;
+                                    master_next_phase<=beforefinsih;
                                     end
                               else
-                              next_phases<=data_phase4;
+                              master_next_phase<=data_phase4;
                         end
                          else
                               begin
-                                 next_phases<=data_phase3;
+                                 master_next_phase<=data_phase3;
                               end
                 end 
             end
@@ -209,14 +242,14 @@ always @(posedge clk or reset)
                               if(no_data==3+1)
                                     begin
                                     iframe<=1;
-                                    next_phases<=beforefinsih;
+                                    master_next_phase<=beforefinsih;
                                     end
                               else
-                              next_phases<=data_phase5;
+                              master_next_phase<=data_phase5;
                         end
                          else
                               begin
-                                 next_phases<=data_phase4;
+                                 master_next_phase<=data_phase4;
                               end
                 end 
             end
@@ -234,14 +267,14 @@ always @(posedge clk or reset)
                               if(no_data==4+1)
                                     begin
                                     iframe<=1;
-                                    next_phases<=beforefinsih;
+                                    master_next_phase<=beforefinsih;
                                     end
                               else
-                              next_phases<=data_phase6;
+                              master_next_phase<=data_phase6;
                         end
                          else
                               begin
-                                 next_phases<=data_phase5;
+                                 master_next_phase<=data_phase5;
                               end
                 end 
             end
@@ -259,14 +292,14 @@ always @(posedge clk or reset)
                               if(no_data==5+1)
                                     begin
                                     iframe<=1;
-                                    next_phases<=beforefinsih;
+                                    master_next_phase<=beforefinsih;
                                     end
                               else
-                              next_phases<=data_phase7;
+                              master_next_phase<=data_phase7;
                         end
                          else
                               begin
-                                 next_phases<=data_phase6;
+                                 master_next_phase<=data_phase6;
                               end
                 end 
             end
@@ -284,14 +317,14 @@ always @(posedge clk or reset)
                               if(no_data==6+1)
                                     begin
                                     iframe<=1;
-                                    next_phases<=beforefinsih;
+                                    master_next_phase<=beforefinsih;
                                     end
                               else
-                              next_phases<=data_phase8;
+                              master_next_phase<=data_phase8;
                         end
                          else
                               begin
-                                 next_phases<=data_phase7;
+                                 master_next_phase<=data_phase7;
                               end
                 end 
             end
@@ -309,14 +342,14 @@ always @(posedge clk or reset)
                               if(no_data==7+1)
                                     begin
                                     iframe<=1;
-                                    next_phases<=beforefinsih;
+                                    master_next_phase<=beforefinsih;
                                     end
                               else
-                              next_phases<=data_phase9;
+                              master_next_phase<=data_phase9;
                         end
                          else
                               begin
-                                 next_phases<=data_phase8;
+                                 master_next_phase<=data_phase8;
                               end
                 end 
             end
@@ -334,14 +367,14 @@ always @(posedge clk or reset)
                               if(no_data==8+1)
                                     begin
                                     iframe<=1;
-                                    next_phases<=beforefinsih;
+                                    master_next_phase<=beforefinsih;
                                     end
                               else
-                              next_phases<=data_phase10;
+                              master_next_phase<=data_phase10;
                         end
                          else
                               begin
-                                 next_phases<=data_phase9;
+                                 master_next_phase<=data_phase9;
                               end
                 end 
             end
@@ -355,7 +388,7 @@ always @(posedge clk or reset)
                   begin
                         datareg<=memTarget[9];
                         iframe<=1;
-                        next_phases<=beforefinsih;
+                        master_next_phase<=beforefinsih;
                   end
             end
       end   
@@ -371,7 +404,7 @@ always @(posedge clk or reset)
                         iready<=1;
                         tready<=1;
                         datareg <= 32'hz;
-                        next_phases <= finish;
+                        master_next_phase <= finish;
                   end
             end
       end  
@@ -379,16 +412,64 @@ always @(posedge clk or reset)
     //* a turnaround phase after data transactions
       finish:
       begin
-            next_phases <= defaultt;
+            master_next_phase <= defaultt;
       end                    
-      
-endcase
+    
+    endcase
+    end
 end
+
+
+always @(posedge clk)
+begin
+
+    case (target_phase)
+
+        default_target:
+        begin
+            tready<=1;
+            deviceSelect<=1;
+            targetflag[0]=0;
+            targetflag[1]=0;
+            targetflag[2]=0;
+            if (!frame)
+            begin
+              target_next_phase <= readadd;
+            end
+            else
+            begin
+              target_next_phase <= default_target;
+            end
+        end
+
+// input device_id 
+
+// deviceA = 00 B=1 C=2
+
+// reg [31:0] mem [9:0]
+
+        readadd:
+        begin
+            if (forceadd==deviceA //forceadd==device_id)
+            begin
+              targetflag[0]<=1; // targetflag=1
+                               // data= memory [0]
+              target_next_phase <= turn_around;
+            end
+            else if (forceadd==deviceB)
+            begin
+              targetflag[1]<=1;
+              target_next_phase <= turn_around;
+            end
+            else if (forceadd==deviceC)
+            begin
+              targetflag[1]<=1;
+              target_next_phase <= turn_around;
+            end                    
+        end
+                
+    endcase
 end
-
-
-
-
 
 
 
