@@ -10,7 +10,7 @@ module Device(
 	output reg tready,
 	output reg deviceSelect,
 	output reg request, 
-      input  reg forceadd
+      input  forceadd
     );
     
 parameter ad1 = 32'h00000000;
