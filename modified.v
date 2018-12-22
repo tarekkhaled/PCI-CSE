@@ -78,7 +78,7 @@ reg [31:0] memTarget[0:9];
 
 
 
-//*  switching from one phase two another on rising clock edges
+//*  switching from one phase to another on rising clock edges
 always @(posedge clk)
 begin
       master_phase <= master_next_phase;
@@ -88,7 +88,7 @@ end
 
 always @(posedge clk or reset)
 begin
-    //* reset state to intialize the bus 
+     //* reset state to intialize the bus 
     if (reset)
             begin 
                 iframe<=1; 
@@ -109,7 +109,7 @@ begin
       //*default where we check the frame and grant  to know the master device
       defaultt: 
       begin
-            if(!grant && iframe)// * iframe will always be 1 and this conditon will enter if grant is 0
+            if(!grant)// * iframe will always be 1 and this conditon will enter if grant is 0
             begin
 				controlreg<=1'bz;
                         masterflag<=1;
@@ -201,7 +201,7 @@ begin
                                  master_next_phase<=data_phase2;
                               end
                 end 
-            end
+ 	            end
       end 
 
       data_phase3:
@@ -432,7 +432,7 @@ begin
             targetflag[0]=0;
             targetflag[1]=0;
             targetflag[2]=0;
-            if (!frame)
+            if (!iframe)
             begin
               target_next_phase <= readadd;
             end
