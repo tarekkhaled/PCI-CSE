@@ -12,18 +12,30 @@ module Device (
       output  request, 
       input[31:0]  forceadd,
       input[31:0] device_id,
+      input[31:0] init_mem[0:10],
       input force_request
 );
 
-assign request = (force_request)?1:0;
-reg [3:0] ackcounter;
-// master phases
+// mem[0] <= init_mem [0];
+// mem[1] <= init_mem [1];
+// mem[2] <= init_mem [2];
+// mem[3] <= init_mem [3];
+// mem[4] <= init_mem [4];
+// mem[5] <= init_mem [5];
+// mem[6] <= init_mem [6];
+// mem[7] <= init_mem [7];
+// mem[8] <= init_mem [8];
+//mem[9] <= init_mem [9];
+
+assign request = force_request;
+
+//* master phases
 reg [15:0] master_phase;
 reg [15:0] master_next_phase;
 parameter  defaultt=16'h0010;
 parameter  master=16'h0020;
 parameter  requestadd= 16'h0000;
-// read phases
+//* read phases
 parameter  turn_around= 16'h0001;
 parameter  data_phase1= 16'h0002;
 parameter  data_phase2= 16'h0003;
@@ -38,7 +50,7 @@ parameter  data_phase10 = 16'h000b;
 parameter  beforefinsih = 16'h001b;
 parameter  finish =16'h0011;
 //*Master write phases
-parameter write_phase=16'h1000;
+parameter write_phase10=16'h1000;
 parameter write_phase1=16'h1001;
 parameter write_phase2=16'h1002;
 parameter write_phase3=16'h1003;
@@ -80,6 +92,7 @@ parameter  target_read7 = 16'h1107;
 parameter  target_read8 = 16'h1108;
 parameter  target_read9 = 16'h1109;
 parameter  target_read10 = 16'h11010;
+parameter target_read_before_finish = 16'h1111;
 
 //* registers for master (initiator) & target(slave)
 reg targetflag;
@@ -103,6 +116,20 @@ assign devSelect=(targetflag)? deviceselect:1'bz;
 reg [31:0] mem [0:9] ;
 
 
+initial
+begin 
+      mem[0] <= init_mem [0];
+      mem[1] <= init_mem [1];
+      mem[2] <= init_mem [2];
+      mem[3] <= init_mem [3];
+      mem[4] <= init_mem [4];
+      mem[5] <= init_mem [5];
+      mem[6] <= init_mem [6];
+      mem[7] <= init_mem [7];
+      mem[8] <= init_mem [8];
+      mem[9] <= init_mem [9];
+end
+
 //*  switching from one phase to another on rising clock edges
 always @(posedge clk)
 begin
@@ -110,31 +137,19 @@ begin
       target_phase <= target_next_phase;
 end
 
-// *iframe deassertion just before last data phase
-always @(negedge clk)
-begin
-      if(ackcounter==no_data-1)
-      begin
-      iframe<=1;
-      master_next_phase<=beforefinsihwrite;
-      end
-end
-// *************************************************
 
 always @( reset)
 begin
      //* reset state to intialize the bus     
       iframe<=1; 
-      iready<=1;
-      tready<=1;
-      deviceselect<=1;
+      iready<=z;
+      tready<=z;
+      deviceselect<=z;
       master_phase<=defaultt;
       target_phase<=default_target;
       masterflag<=0;
       targetflag<=0;
       dataadd<=32'hz;
-      addressreg<=32'hz;
-      ackcounter<=0;
 end
 
 always@(posedge clk)
@@ -150,15 +165,12 @@ begin
       //*default where we check the frame and grant  to know the master device
       defaultt: 
       begin
-            
             iready<=1'b1;
             tready<=1'bz;
             deviceselect<=1'bz;
-
             @(negedge clk)
             begin
                 iframe<=0;
-                controlreg<=0;
                 dataadd<=forceadd; //address asserted
                 if(cbe) //read operation 
                 master_next_phase<=turn_around;
@@ -170,135 +182,196 @@ begin
       
       //*this phase is responsible for putting the address of the slave on the data bus and
       //* check the operation (read) or (write)
-      write_phase: 
+      write_phase1: 
       begin
             @(negedge clk)
             begin
-                  iready<=0;
                   dataadd<=mem[0];
-                  master_next_phase<=write_phase2;
-                  
+                  iready<=0;
+                  if (no_data == 0+1)
+                  begin
+                        iframe <= 1;
+                        master_next_phase<=finishwrite;
+                  end     
+                  else
+                        master_next_phase<=write_phase2;
             end
       end
 
       write_phase2:
       begin
-      @(negedge clk)
-      begin
-                               
-             if(!iframe && !iready && !tready && !deviceselect && ackcounter==1 )
-                begin
-                    dataadd<=mem[1];
-                    master_next_phase<=write_phase3;
-                end
-            else  master_next_phase<=write_phase2;
-        end
+            @(negedge clk)
+            begin      
+                  if(!iready && !tready && !deviceselect)
+                  begin
+                        dataadd<=mem[1];
+                        if (no_data == 1+1)
+                        begin
+                              iframe <= 1;
+                              master_next_phase<=finishwrite;
+                        end     
+                        else
+                        master_next_phase<=write_phase3;
+                  end
+                  else  
+                        master_next_phase<=write_phase2;
+            end
       end
       
       write_phase3:
       begin
-      @(negedge clk)
-      begin
-             if(!iframe && !iready && !tready && !deviceselect && ackcounter==2 )
-                begin
-                    dataadd<=mem[2];
-                    master_next_phase<=write_phase4;
-                end
-            else  master_next_phase<=write_phase3;
-        end
+            @(negedge clk)
+            begin
+                  if(!iready && !tready && !deviceselect )
+                  begin
+                        dataadd<=mem[2];
+                        if(no_data==2+1)
+                        begin
+                              iframe <= 1;
+                              master_next_phase<=finishwrite;
+                        end
+                        else
+                         master_next_phase<=write_phase4;
+                  end
+                  else  master_next_phase<=write_phase3;
+            end
       end
-      / *********************************************************** /
+
       write_phase4:
       begin
       @(negedge clk)
       begin
-             if(!iframe && !iready && !tready && !deviceselect&& ackcounter==3 )
+             if( !iready && !tready && !deviceselect )
                 begin
                     dataadd<=mem[3];
-                    master_next_phase<=write_phase5;
+                     if(no_data==3+1)
+                        begin
+                              iframe <= 1;
+                              master_next_phase<=finishwrite;
+                        end
+                        else
+                         master_next_phase<=write_phase5;
                 end
             else  master_next_phase<=write_phase4;
-        end
       end
-      //************************************************************//
+      end
+
       write_phase5:
       begin
       @(negedge clk)
       begin
-             if(!iframe && !iready && !tready && !deviceselect && ackcounter==4 )
+             if( !iready && !tready && !deviceselect )
                 begin
                     dataadd<=mem[4];
-                    master_next_phase<=write_phase6;
+                     if(no_data==4+1)
+                        begin
+                              iframe <= 1;
+                              master_next_phase<=finishwrite;
+                        end
+                        else
+                              master_next_phase<=write_phase6;
                 end
-            else  master_next_phase<=write_phase5;
-        end
+             else  master_next_phase<=write_phase5;
       end
+      end
+
       write_phase6:
       begin
-      @(negedge clk)
-      begin
-             if(!iframe && !iready && !tready && !deviceselect&& ackcounter==5 )
-                begin
-                    dataadd<=mem[5];
-                    master_next_phase<=write_phase7;
-                end
-            else  master_next_phase<=write_phase6;
-        end
+            @(negedge clk)
+            begin
+                  if( !iready && !tready && !deviceselect  )
+                  begin
+                        dataadd<=mem[5];
+                         if(no_data==5+1)
+                        begin
+                              iframe <= 1;
+                              master_next_phase<=finishwrite;
+                        end
+                        else
+                              master_next_phase<=write_phase7;
+                  end
+                  else  master_next_phase<=write_phase6;
+            end
       end
+
       write_phase7:
       begin
       @(negedge clk)
       begin
-             if(!iframe && !iready && !tready && !deviceselect&& ackcounter==6 )
+             if(!iready && !tready && !deviceselect )
                 begin
                     dataadd<=mem[6];
-                    master_next_phase<=write_phase8;
+                     if(no_data==6+1)
+                        begin
+                              iframe <= 1;
+                              master_next_phase<=finishwrite;
+                        end
+                        else
+                               master_next_phase<=write_phase8;
                 end
             else  master_next_phase<=write_phase7;
         end
       end
+
       write_phase8:
       begin
       @(negedge clk)
       begin
-             if(!iframe && !iready && !tready && !deviceselect&& ackcounter==7 )
+             if( !iready && !tready && !deviceselect )
                 begin
                     dataadd<=mem[7];
-                    master_next_phase<=write_phase9;
+                     if(no_data==7+1)
+                        begin
+                              iframe <= 1;
+                              master_next_phase<=finishwrite;
+                        end
+                        else
+                               master_next_phase<=write_phase9;
                 end
             else  master_next_phase<=write_phase8;
         end
       end
+
       write_phase9:
       begin
       @(negedge clk)
       begin
-             if(!iframe && !iready && !tready && !deviceselect&& ackcounter==8 )
+             if( !iready && !tready && !deviceselect)
                 begin
-                    dataadd<=mem[7];
-                    master_next_phase<=write_phase9;
+                    dataadd<=mem[8];
+                     if(no_data==8+1)
+                        begin
+                              iframe <= 1;
+                              master_next_phase<=finishwrite;
+                        end
+                        else
+                              master_next_phase<=write_phase10;
                 end
             else  master_next_phase<=write_phase9;
         end
       end
-      beforefinsihwrite:
+
+      write_phase10:
       begin
-        @(negedge clk)
+      @(negedge clk)
       begin
-             if( !iready )
+             if( !iready && !tready && !deviceselect)
                 begin
-                    dataadd<=mem[no_data-1];
+                    dataadd<=mem[9];
                     master_next_phase<=finishwrite;
                 end
-                else master_next_phase<=beforefinsihwrite;
+            else  master_next_phase<=write_phase10;
         end
       end
+
       finishwrite:
       begin
-            iframe<=1'bz;
-            
+            @(negedge clk)
+            begin
             dataadd<=32'bz;
-            master_next_phase<=defaultt;
+            iready <=1;
+            master_next_phase<=defaultt; 
+            end  
       end
 
      //*this phase happens when master leaves the databus to the slave so it can write data on it 
@@ -317,8 +390,7 @@ begin
       begin
             @(negedge clk)
             begin 
-                        if(!deviceselect && !t
-                        ready && !iready && !iframe)
+                        if(!deviceselect && !tready && !iready && !iframe)
                         begin 
                               //*this if to check if this is the last data transaction will happen 
                               if(no_data==0+1)  
@@ -339,8 +411,7 @@ begin
 
       data_phase2:
       begin
-            if(!deviceselect && !t
-            ready && !iready && !iframe)
+            if(!deviceselect && !tready && !iready && !iframe)
             begin
                         //on the posedge you will need to read the data from the databus and save it in the memory
                         mem[0]<=dataadd;
@@ -845,158 +916,166 @@ begin
       
       target_read1:
       begin
-            mem[0]<=dataadd;
-            if (!deviceselect && !tready && !iready)
-            target_next_phase <= target_read2;
-            else 
-            target_next_phase <= target_read1;                  
+      
+            @(posedge iframe)
+            begin
+                  target_next_phase<=target_read_before_finish;           
+            end
+            if (no_data>1)
+            begin
+                  mem[0]<=dataadd;
+                  if (!deviceselect && !tready && !iready)
+                  target_next_phase <= target_read2;
+                  else 
+                  target_next_phase <= target_read1;
+            end                
       end
+            
 
       target_read2:
       begin
-            mem[1]<=dataadd;
-            if (!deviceselect && !tready && !iready)
-            target_next_phase <= target_read3;
-            else 
-            target_next_phase <= target_read2;
+       @(posedge iframe)
+            begin
+                  target_next_phase<=target_read_before_finish;           
+            end
+            if (no_data>2)
+            begin
+                  mem[1]<=dataadd;
+                  if (!deviceselect && !tready && !iready)
+                  target_next_phase <= target_read3;
+                  else 
+                  target_next_phase <= target_read2;
+            end
       end
 
       target_read3:
       begin
-            mem[2]<=dataadd;
-            if (!deviceselect && !tready && !iready)
-            target_next_phase <= target_read4;
-            else 
-            target_next_phase <= target_read3;
+             @(posedge iframe)
+            begin
+                  target_next_phase<=target_read_before_finish;           
+            end
+            if (no_data>3)
+            begin
+                  mem[2]<=dataadd;
+                  if (!deviceselect && !tready && !iready)
+                  target_next_phase <= target_read4;
+                  else 
+                  target_next_phase <= target_read3;
+            end
       end
 
       target_read4:
       begin
-            mem[3]<=dataadd;
-            if (!deviceselect && !tready && !iready)
-            target_next_phase <= target_read5;
-            else 
-            target_next_phase <= target_read4;
+             @(posedge iframe)
+            begin
+                  target_next_phase<=target_read_before_finish;           
+            end
+            if (no_data>4)
+            begin
+                  mem[3]<=dataadd;
+                  if (!deviceselect && !tready && !iready)
+                  target_next_phase <= target_read5;
+                  else 
+                  target_next_phase <= target_read4;
+            end
       end
 
       target_read5:
       begin
-            mem[4]<=dataadd;
-            if (!deviceselect && !tready && !iready)
-            target_next_phase <= target_read6;
-            else 
-            target_next_phase <= target_read5;
+             @(posedge iframe)
+            begin
+                  target_next_phase<=target_read_before_finish;           
+            end
+            if (no_data>5)
+            begin
+                  mem[4]<=dataadd;
+                  if (!deviceselect && !tready && !iready)
+                  target_next_phase <= target_read6;
+                  else 
+                  target_next_phase <= target_read5;
+            end
       end
 
       target_read6:
       begin
+             @(posedge iframe)
+            begin
+                  target_next_phase<=target_read_before_finish;           
+            end
+            if (no_data>6)
+            begin
             mem[5]<=dataadd;
             if (!deviceselect && !tready && !iready)
             target_next_phase <= target_read7;
             else 
             target_next_phase <= target_read6;
+            end
       end
 
       target_read7:
       begin
-            mem[6]<=dataadd;
-            if (!deviceselect && !tready && !iready)
-            target_next_phase <= target_read8;
-            else 
-            target_next_phase <= target_read7;
+ @(posedge iframe)
+            begin
+                  target_next_phase<=target_read_before_finish;           
+            end
+            if (no_data>7)
+            begin
+                  mem[6]<=dataadd;
+                  if (!deviceselect && !tready && !iready)
+                  target_next_phase <= target_read8;
+                  else 
+                  target_next_phase <= target_read7;
+            end
       end
 
       target_read8:
       begin
-            mem[7]<=dataadd;
-            if (!deviceselect && !tready && !iready)
-            target_next_phase <= target_read9;
-            else 
-            target_next_phase <= target_read8;
+       @(posedge iframe)
+            begin
+                  target_next_phase<=target_read_before_finish;           
+            end
+            if (no_data>8)
+            begin
+                  mem[7]<=dataadd;
+                  if (!deviceselect && !tready && !iready)
+                  target_next_phase <= target_read9;
+                  else 
+                  target_next_phase <= target_read8;
+            end
       end
 
       target_read9:
       begin
-            mem[8]<=dataadd;
-            if (!deviceselect && !tready && !iready)
-            target_next_phase <= target_read10;
-            else 
-            target_next_phase <= target_read9;
+       @(posedge iframe)
+            begin
+                  target_next_phase<=target_read_before_finish;           
+            end
+            if (no_data>9)
+            begin
+                  mem[8]<=dataadd;
+                  if (!deviceselect && !tready && !iready)
+                  target_next_phase <= target_read10;
+                  else 
+                  target_next_phase <= target_read9;
+            end
       end
 
       target_read10:
       begin
-            mem[9]<=dataadd;
             if (!deviceselect && !tready && !iready)
-            target_next_phase <= target_finish;
+            target_next_phase <= target_read_before_finish;
             else 
             target_next_phase <= target_read10;
-      end            
+      end
 
-// w2fna hena! 
-
+      target_read_before_finish:
+      begin
+        mem[no_data-1]<=dataadd;
+        target_next_phase<=target_finish;
+      end       
 
 endcase
 end
 
-
-
 endmodule 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-#zz
-#cabu
 
