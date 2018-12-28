@@ -285,7 +285,7 @@ begin
                 targetflag <=1;
                 tready <= 1;
                 deviceselect<=1;
-					 i=0;
+			i=0;
                 if (cbe)
                  target_next_phase <= turn_around_target;
                 else
@@ -559,7 +559,7 @@ begin
     force_request_A=1;
     #140
 
-      // 2nd scenario
+     // 2nd scenario
     cbe=0;
     force_request_A=1;
     force_request_B=0;
@@ -569,15 +569,7 @@ begin
     #10
     force_request_B=1;
 
-   #140
-   cbe=0; // 1=read , 0=write
-    force_request_A=0;
-    force_request_B=1;
-    force_request_C=1;
-    forceadd = deviceB; 
-    no_data=3;
-    #10
-    force_request_A=1;
+
 	#140
      cbe=0;
     force_request_A=0;
@@ -588,12 +580,14 @@ begin
     #10
     force_request_A=1;
     force_request_C=1;
+    force_request_B=1;
    #50
       forceadd = deviceA;
-      no_data = 1;
+      no_data = 3;
+
 
  #50
-      cbe=0;
+      cbe=1;
     force_request_A=1;
     force_request_B=1;
     force_request_C=0;
