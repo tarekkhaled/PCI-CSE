@@ -91,7 +91,7 @@ parameter  target_read6 = 16'h1106;
 parameter  target_read7 = 16'h1107;
 parameter  target_read8 = 16'h1108;
 parameter  target_read9 = 16'h1109;
-parameter  target_read10 = 16'h11010;
+parameter  target_read10 = 16'h1901;
 parameter target_read_before_finish = 16'h1111;
 
 //* registers for master (initiator) & target(slave)
